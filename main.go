@@ -127,6 +127,19 @@ func executeDBQuery(ctx context.Context, request mcp.CallToolRequest) (*mcp.Call
 	return mcp.NewToolResultText(msg), nil
 }
 
+// ddlKeywords berisi keyword DDL yang selalu ditolak secara hardcode
+var ddlKeywords = []string{"CREATE", "ALTER", "DROP", "TRUNCATE", "RENAME"}
+
+// isDDLQuery mengecek apakah query termasuk DDL berdasarkan keyword pertama
+func isDDLQuery(command string) bool {
+	for _, kw := range ddlKeywords {
+		if command == kw {
+			return true
+		}
+	}
+	return false
+}
+
 // validateQueryAccess mengkategorikan query dan mengecek izinnya
 func validateQueryAccess(query string) (string, bool) {
 	q := strings.ToUpper(strings.TrimSpace(query))
@@ -137,14 +150,19 @@ func validateQueryAccess(query string) (string, bool) {
 
 	command := words[0]
 
+	// Hardcode restrict: query DDL selalu ditolak
+	if isDDLQuery(command) {
+		return "DDL", false
+	}
+
 	switch command {
 	case "SELECT", "SHOW", "DESCRIBE", "EXPLAIN":
 		return "READ", config.AllowRead
-	case "INSERT", "CREATE":
+	case "INSERT":
 		return "CREATE", config.AllowCreate
-	case "UPDATE", "ALTER":
+	case "UPDATE":
 		return "UPDATE", config.AllowUpdate
-	case "DELETE", "DROP", "TRUNCATE":
+	case "DELETE":
 		return "DELETE", config.AllowDelete
 	default:
 		return "UNKNOWN", false

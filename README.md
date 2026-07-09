@@ -34,9 +34,9 @@ Server dikonfigurasi melalui environment variable:
 | `DB_DRIVER` | Driver database (`mysql` atau `postgres`) | Ya |
 | `DB_DSN` | Data Source Name / Connection String | Ya |
 | `ACTION_READ` | Izinkan query SELECT/SHOW/DESCRIBE/EXPLAIN (`true`/`false`) | Tidak (default: `false`) |
-| `ACTION_CREATE` | Izinkan query INSERT/CREATE (`true`/`false`) | Tidak (default: `false`) |
-| `ACTION_UPDATE` | Izinkan query UPDATE/ALTER (`true`/`false`) | Tidak (default: `false`) |
-| `ACTION_DELETE` | Izinkan query DELETE/DROP/TRUNCATE (`true`/`false`) | Tidak (default: `false`) |
+| `ACTION_CREATE` | Izinkan query INSERT (`true`/`false`) | Tidak (default: `false`) |
+| `ACTION_UPDATE` | Izinkan query UPDATE (`true`/`false`) | Tidak (default: `false`) |
+| `ACTION_DELETE` | Izinkan query DELETE (`true`/`false`) | Tidak (default: `false`) |
 
 ### Format DSN
 
@@ -163,13 +163,19 @@ INSERT INTO logs (message, created_at) VALUES ('test', NOW())
 | Kategori | Perintah SQL | Environment Variable |
 |----------|-------------|---------------------|
 | READ | SELECT, SHOW, DESCRIBE, EXPLAIN | `ACTION_READ` |
-| CREATE | INSERT, CREATE | `ACTION_CREATE` |
-| UPDATE | UPDATE, ALTER | `ACTION_UPDATE` |
-| DELETE | DELETE, DROP, TRUNCATE | `ACTION_DELETE` |
+| CREATE | INSERT | `ACTION_CREATE` |
+| UPDATE | UPDATE | `ACTION_UPDATE` |
+| DELETE | DELETE | `ACTION_DELETE` |
+| DDL (selalu ditolak) | CREATE, ALTER, DROP, TRUNCATE, RENAME | — |
+
+## DDL Restriction
+
+Query DDL (Data Definition Language) seperti `CREATE TABLE`, `ALTER TABLE`, `DROP TABLE`, `TRUNCATE TABLE`, dan `RENAME TABLE` **selalu ditolak secara hardcode**, terlepas dari konfigurasi environment variable. Ini untuk mencegah perubahan struktur database yang tidak disengaja melalui AI assistant.
 
 ## Catatan Penting
 
 - **Keamanan:** Selalu gunakan akses minimal yang diperlukan. Untuk production, aktifkan hanya `ACTION_READ`.
+- **DDL Ditolak:** Semua query DDL (CREATE, ALTER, DROP, TRUNCATE, RENAME) selalu ditolak secara hardcode untuk keamanan.
 - **PostgreSQL & LastInsertId:** PostgreSQL tidak mendukung `LastInsertId()`. Gunakan `RETURNING id` dalam query INSERT untuk mendapatkan ID terakhir.
 - **Validasi Query:** Server memvalidasi jenis query berdasarkan kata pertama dari statement SQL. Query yang tidak dikenali akan ditolak.
 
