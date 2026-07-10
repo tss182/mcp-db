@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -24,10 +25,18 @@ type DBConfig struct {
 	AllowCreate bool
 	AllowUpdate bool
 	AllowDelete bool
+	AllowDDL    bool
+}
+
+// KnowledgeEntry menyimpan satu file knowledge base
+type KnowledgeEntry struct {
+	Name    string `json:"name"`
+	Content string `json:"content"`
 }
 
 var db *sql.DB
 var config DBConfig
+var knowledgeBase []KnowledgeEntry
 
 func main() {
 	// Parse Environment Variables
@@ -38,6 +47,7 @@ func main() {
 		AllowCreate: parseBoolEnv("ACTION_CREATE", false),
 		AllowUpdate: parseBoolEnv("ACTION_UPDATE", false),
 		AllowDelete: parseBoolEnv("ACTION_DELETE", false),
+		AllowDDL:    parseBoolEnv("ACTION_DDL", false),
 	}
 
 	if config.Driver == "" || config.DSN == "" {
@@ -55,26 +65,121 @@ func main() {
 		log.Fatalf("Gagal menghubungi database: %v", err)
 	}
 
+	// Load Knowledge Base
+	kbPath := os.Getenv("KB_PATH")
+	if kbPath != "" {
+		knowledgeBase, err = loadKnowledgeBase(kbPath)
+		if err != nil {
+			log.Printf("Warning: Gagal memuat knowledge base dari %s: %v", kbPath, err)
+		} else {
+			log.Printf("Knowledge base dimuat: %d file dari %s", len(knowledgeBase), kbPath)
+		}
+	}
+
 	// Inisialisasi MCP Server
 	s := server.NewMCPServer(
 		"DynamicDB-MCP",
-		"1.1.0",
+		"1.2.0",
 		server.WithToolCapabilities(true),
 	)
 
-	// Daftarkan Tool
-	tool := mcp.NewTool("execute_db_query",
+	// Daftarkan Tool: execute_db_query
+	queryTool := mcp.NewTool("execute_db_query",
 		mcp.WithDescription("Mengeksekusi query database. Hak akses diatur oleh server (Bisa membaca atau memodifikasi data tergantung konfigurasi)."),
 		mcp.WithString("query", mcp.Required(), mcp.Description("Query SQL yang akan dieksekusi.")),
 	)
-	s.AddTool(tool, executeDBQuery)
+	s.AddTool(queryTool, executeDBQuery)
 
-	log.Printf("Mulai MCP Server [%s]. Akses: READ=%v, CREATE=%v, UPDATE=%v, DELETE=%v",
-		config.Driver, config.AllowRead, config.AllowCreate, config.AllowUpdate, config.AllowDelete)
+	// Daftarkan Tool: get_knowledge
+	kbTool := mcp.NewTool("get_knowledge",
+		mcp.WithDescription("Mengambil informasi dari knowledge base (skema database, relasi tabel, konteks bisnis). Gunakan tool ini sebelum menulis query untuk memahami struktur database."),
+		mcp.WithString("search", mcp.Description("Kata kunci pencarian (opsional). Jika kosong, menampilkan daftar semua topik yang tersedia.")),
+	)
+	s.AddTool(kbTool, getKnowledge)
+
+	log.Printf("Mulai MCP Server [%s]. Akses: READ=%v, CREATE=%v, UPDATE=%v, DELETE=%v, DDL=%v, KB=%d files",
+		config.Driver, config.AllowRead, config.AllowCreate, config.AllowUpdate, config.AllowDelete, config.AllowDDL, len(knowledgeBase))
 
 	if err := server.ServeStdio(s); err != nil {
 		log.Fatalf("Server error: %v", err)
 	}
+}
+
+// loadKnowledgeBase memuat semua file .md dan .txt dari direktori yang diberikan
+func loadKnowledgeBase(dirPath string) ([]KnowledgeEntry, error) {
+	var entries []KnowledgeEntry
+
+	err := filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+
+		ext := strings.ToLower(filepath.Ext(path))
+		if ext != ".md" && ext != ".txt" {
+			return nil
+		}
+
+		content, err := os.ReadFile(path)
+		if err != nil {
+			log.Printf("Warning: Gagal membaca file %s: %v", path, err)
+			return nil
+		}
+
+		// Gunakan relative path dari KB_PATH sebagai nama
+		relPath, _ := filepath.Rel(dirPath, path)
+		entries = append(entries, KnowledgeEntry{
+			Name:    relPath,
+			Content: string(content),
+		})
+
+		return nil
+	})
+
+	return entries, err
+}
+
+// Handler untuk get_knowledge tool
+func getKnowledge(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if len(knowledgeBase) == 0 {
+		return mcp.NewToolResultText("Knowledge base kosong. Set environment variable KB_PATH ke direktori yang berisi file .md atau .txt."), nil
+	}
+
+	args, _ := request.Params.Arguments.(map[string]interface{})
+	search, _ := args["search"].(string)
+	search = strings.TrimSpace(search)
+
+	// Jika tidak ada keyword pencarian, tampilkan daftar topik
+	if search == "" {
+		var topics []string
+		for _, entry := range knowledgeBase {
+			topics = append(topics, fmt.Sprintf("- %s", entry.Name))
+		}
+		result := fmt.Sprintf("Knowledge base tersedia (%d topik):\n%s\n\nGunakan parameter 'search' untuk mencari informasi spesifik.", len(knowledgeBase), strings.Join(topics, "\n"))
+		return mcp.NewToolResultText(result), nil
+	}
+
+	// Cari berdasarkan keyword (case-insensitive)
+	searchLower := strings.ToLower(search)
+	var matches []string
+
+	for _, entry := range knowledgeBase {
+		nameLower := strings.ToLower(entry.Name)
+		contentLower := strings.ToLower(entry.Content)
+
+		if strings.Contains(nameLower, searchLower) || strings.Contains(contentLower, searchLower) {
+			matches = append(matches, fmt.Sprintf("=== %s ===\n%s", entry.Name, entry.Content))
+		}
+	}
+
+	if len(matches) == 0 {
+		return mcp.NewToolResultText(fmt.Sprintf("Tidak ditemukan knowledge base yang cocok dengan '%s'.", search)), nil
+	}
+
+	result := fmt.Sprintf("Ditemukan %d hasil untuk '%s':\n\n%s", len(matches), search, strings.Join(matches, "\n\n"))
+	return mcp.NewToolResultText(result), nil
 }
 
 // Handler untuk eksekusi tool
@@ -127,7 +232,7 @@ func executeDBQuery(ctx context.Context, request mcp.CallToolRequest) (*mcp.Call
 	return mcp.NewToolResultText(msg), nil
 }
 
-// ddlKeywords berisi keyword DDL yang selalu ditolak secara hardcode
+// ddlKeywords berisi keyword DDL
 var ddlKeywords = []string{"CREATE", "ALTER", "DROP", "TRUNCATE", "RENAME"}
 
 // isDDLQuery mengecek apakah query termasuk DDL berdasarkan keyword pertama
@@ -150,9 +255,9 @@ func validateQueryAccess(query string) (string, bool) {
 
 	command := words[0]
 
-	// Hardcode restrict: query DDL selalu ditolak
+	// DDL dikontrol lewat ACTION_DDL (default: false)
 	if isDDLQuery(command) {
-		return "DDL", false
+		return "DDL", config.AllowDDL
 	}
 
 	switch command {
