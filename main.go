@@ -17,7 +17,9 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
-// DBConfig menyimpan konfigurasi koneksi dan hak akses
+const Version = "0.1.2"
+
+// DBConfig holds connection and access control configuration
 type DBConfig struct {
 	Driver      string
 	DSN         string
@@ -28,7 +30,7 @@ type DBConfig struct {
 	AllowDDL    bool
 }
 
-// KnowledgeEntry menyimpan satu file knowledge base
+// KnowledgeEntry holds a single knowledge base file
 type KnowledgeEntry struct {
 	Name    string `json:"name"`
 	Content string `json:"content"`
@@ -39,7 +41,7 @@ var config DBConfig
 var knowledgeBase []KnowledgeEntry
 
 func main() {
-	// Parse Environment Variables
+	// Parse environment variables
 	config = DBConfig{
 		Driver:      os.Getenv("DB_DRIVER"),
 		DSN:         os.Getenv("DB_DSN"),
@@ -51,61 +53,61 @@ func main() {
 	}
 
 	if config.Driver == "" || config.DSN == "" {
-		log.Fatal("DB_DRIVER dan DB_DSN harus diisi.")
+		log.Fatal("DB_DRIVER and DB_DSN are required.")
 	}
 
 	var err error
 	db, err = sql.Open(config.Driver, config.DSN)
 	if err != nil {
-		log.Fatalf("Gagal membuka koneksi database: %v", err)
+		log.Fatalf("Failed to open database connection: %v", err)
 	}
 	defer db.Close()
 
 	if err = db.Ping(); err != nil {
-		log.Fatalf("Gagal menghubungi database: %v", err)
+		log.Fatalf("Failed to ping database: %v", err)
 	}
 
-	// Load Knowledge Base
+	// Load knowledge base
 	kbPath := os.Getenv("KB_PATH")
 	if kbPath != "" {
 		knowledgeBase, err = loadKnowledgeBase(kbPath)
 		if err != nil {
-			log.Printf("Warning: Gagal memuat knowledge base dari %s: %v", kbPath, err)
+			log.Printf("Warning: Failed to load knowledge base from %s: %v", kbPath, err)
 		} else {
-			log.Printf("Knowledge base dimuat: %d file dari %s", len(knowledgeBase), kbPath)
+			log.Printf("Knowledge base loaded: %d files from %s", len(knowledgeBase), kbPath)
 		}
 	}
 
-	// Inisialisasi MCP Server
+	// Initialize MCP Server
 	s := server.NewMCPServer(
-		"DynamicDB-MCP",
-		"1.2.0",
+		"MCP-DBs",
+		Version,
 		server.WithToolCapabilities(true),
 	)
 
-	// Daftarkan Tool: execute_db_query
+	// Register tool: execute_db_query
 	queryTool := mcp.NewTool("execute_db_query",
-		mcp.WithDescription("Mengeksekusi query database. Hak akses diatur oleh server (Bisa membaca atau memodifikasi data tergantung konfigurasi)."),
-		mcp.WithString("query", mcp.Required(), mcp.Description("Query SQL yang akan dieksekusi.")),
+		mcp.WithDescription("Execute a database query. Access rights are controlled by the server configuration (can read or modify data depending on settings)."),
+		mcp.WithString("query", mcp.Required(), mcp.Description("The SQL query to execute.")),
 	)
 	s.AddTool(queryTool, executeDBQuery)
 
-	// Daftarkan Tool: get_knowledge
+	// Register tool: get_knowledge
 	kbTool := mcp.NewTool("get_knowledge",
-		mcp.WithDescription("Mengambil informasi dari knowledge base (skema database, relasi tabel, konteks bisnis). Gunakan tool ini sebelum menulis query untuk memahami struktur database."),
-		mcp.WithString("search", mcp.Description("Kata kunci pencarian (opsional). Jika kosong, menampilkan daftar semua topik yang tersedia.")),
+		mcp.WithDescription("Retrieve information from the knowledge base (database schema, table relations, business context). Use this tool before writing queries to understand the database structure."),
+		mcp.WithString("search", mcp.Description("Search keyword (optional). If empty, lists all available topics.")),
 	)
 	s.AddTool(kbTool, getKnowledge)
 
-	log.Printf("Mulai MCP Server [%s]. Akses: READ=%v, CREATE=%v, UPDATE=%v, DELETE=%v, DDL=%v, KB=%d files",
-		config.Driver, config.AllowRead, config.AllowCreate, config.AllowUpdate, config.AllowDelete, config.AllowDDL, len(knowledgeBase))
+	log.Printf("MCP Server v%s started [%s]. Access: READ=%v, CREATE=%v, UPDATE=%v, DELETE=%v, DDL=%v, KB=%d files",
+		Version, config.Driver, config.AllowRead, config.AllowCreate, config.AllowUpdate, config.AllowDelete, config.AllowDDL, len(knowledgeBase))
 
 	if err := server.ServeStdio(s); err != nil {
 		log.Fatalf("Server error: %v", err)
 	}
 }
 
-// loadKnowledgeBase memuat semua file .md dan .txt dari direktori yang diberikan
+// loadKnowledgeBase loads all .md and .txt files from the given directory
 func loadKnowledgeBase(dirPath string) ([]KnowledgeEntry, error) {
 	var entries []KnowledgeEntry
 
@@ -124,11 +126,11 @@ func loadKnowledgeBase(dirPath string) ([]KnowledgeEntry, error) {
 
 		content, err := os.ReadFile(path)
 		if err != nil {
-			log.Printf("Warning: Gagal membaca file %s: %v", path, err)
+			log.Printf("Warning: Failed to read file %s: %v", path, err)
 			return nil
 		}
 
-		// Gunakan relative path dari KB_PATH sebagai nama
+		// Use relative path from KB_PATH as the entry name
 		relPath, _ := filepath.Rel(dirPath, path)
 		entries = append(entries, KnowledgeEntry{
 			Name:    relPath,
@@ -141,27 +143,27 @@ func loadKnowledgeBase(dirPath string) ([]KnowledgeEntry, error) {
 	return entries, err
 }
 
-// Handler untuk get_knowledge tool
+// getKnowledge handles the get_knowledge tool
 func getKnowledge(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	if len(knowledgeBase) == 0 {
-		return mcp.NewToolResultText("Knowledge base kosong. Set environment variable KB_PATH ke direktori yang berisi file .md atau .txt."), nil
+		return mcp.NewToolResultText("Knowledge base is empty. Set the KB_PATH environment variable to a directory containing .md or .txt files."), nil
 	}
 
 	args, _ := request.Params.Arguments.(map[string]interface{})
 	search, _ := args["search"].(string)
 	search = strings.TrimSpace(search)
 
-	// Jika tidak ada keyword pencarian, tampilkan daftar topik
+	// If no search keyword, list all available topics
 	if search == "" {
 		var topics []string
 		for _, entry := range knowledgeBase {
 			topics = append(topics, fmt.Sprintf("- %s", entry.Name))
 		}
-		result := fmt.Sprintf("Knowledge base tersedia (%d topik):\n%s\n\nGunakan parameter 'search' untuk mencari informasi spesifik.", len(knowledgeBase), strings.Join(topics, "\n"))
+		result := fmt.Sprintf("Available knowledge base (%d topics):\n%s\n\nUse the 'search' parameter to find specific information.", len(knowledgeBase), strings.Join(topics, "\n"))
 		return mcp.NewToolResultText(result), nil
 	}
 
-	// Cari berdasarkan keyword (case-insensitive)
+	// Search by keyword (case-insensitive)
 	searchLower := strings.ToLower(search)
 	var matches []string
 
@@ -175,54 +177,54 @@ func getKnowledge(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallTo
 	}
 
 	if len(matches) == 0 {
-		return mcp.NewToolResultText(fmt.Sprintf("Tidak ditemukan knowledge base yang cocok dengan '%s'.", search)), nil
+		return mcp.NewToolResultText(fmt.Sprintf("No knowledge base entries found matching '%s'.", search)), nil
 	}
 
-	result := fmt.Sprintf("Ditemukan %d hasil untuk '%s':\n\n%s", len(matches), search, strings.Join(matches, "\n\n"))
+	result := fmt.Sprintf("Found %d results for '%s':\n\n%s", len(matches), search, strings.Join(matches, "\n\n"))
 	return mcp.NewToolResultText(result), nil
 }
 
-// Handler untuk eksekusi tool
+// executeDBQuery handles the execute_db_query tool
 func executeDBQuery(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args, ok := request.Params.Arguments.(map[string]interface{})
 	if !ok {
-		return mcp.NewToolResultError("Arguments tidak valid"), nil
+		return mcp.NewToolResultError("Invalid arguments"), nil
 	}
 	query, ok := args["query"].(string)
 	if !ok {
-		return mcp.NewToolResultError("Argument 'query' tidak valid"), nil
+		return mcp.NewToolResultError("Invalid 'query' argument"), nil
 	}
 
 	queryType, isAllowed := validateQueryAccess(query)
 	if !isAllowed {
-		return mcp.NewToolResultError(fmt.Sprintf("Akses ditolak untuk jenis query ini (Tipe: %s)", queryType)), nil
+		return mcp.NewToolResultError(fmt.Sprintf("Access denied for this query type (Type: %s)", queryType)), nil
 	}
 
-	// Jika query adalah READ, gunakan QueryContext untuk mengambil data
+	// For READ queries, use QueryContext to fetch data
 	if queryType == "READ" {
 		rows, err := db.QueryContext(ctx, query)
 		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("Error eksekusi READ: %v", err)), nil
+			return mcp.NewToolResultError(fmt.Sprintf("READ execution error: %v", err)), nil
 		}
 		defer rows.Close()
 
 		jsonResult, err := rowsToJSON(rows)
 		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("Error konversi data: %v", err)), nil
+			return mcp.NewToolResultError(fmt.Sprintf("Data conversion error: %v", err)), nil
 		}
 		return mcp.NewToolResultText(jsonResult), nil
 	}
 
-	// Jika query adalah CREATE, UPDATE, atau DELETE, gunakan ExecContext
+	// For CREATE, UPDATE, DELETE, or DDL queries, use ExecContext
 	result, err := db.ExecContext(ctx, query)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Error eksekusi %s: %v", queryType, err)), nil
+		return mcp.NewToolResultError(fmt.Sprintf("%s execution error: %v", queryType, err)), nil
 	}
 
 	rowsAffected, _ := result.RowsAffected()
-	msg := fmt.Sprintf("Query %s berhasil dieksekusi. Rows affected: %d", queryType, rowsAffected)
+	msg := fmt.Sprintf("Query %s executed successfully. Rows affected: %d", queryType, rowsAffected)
 
-	// Khusus CREATE (INSERT), coba ambil LastInsertId jika disupport driver (Postgres biasanya tidak support LastInsertId, melainkan via RETURNING)
+	// For INSERT on MySQL, try to get LastInsertId (PostgreSQL does not support this, use RETURNING instead)
 	if queryType == "CREATE" && config.Driver == "mysql" {
 		if lastID, err := result.LastInsertId(); err == nil && lastID > 0 {
 			msg += fmt.Sprintf(", Last Insert ID: %d", lastID)
@@ -232,10 +234,10 @@ func executeDBQuery(ctx context.Context, request mcp.CallToolRequest) (*mcp.Call
 	return mcp.NewToolResultText(msg), nil
 }
 
-// ddlKeywords berisi keyword DDL
+// ddlKeywords contains DDL keywords
 var ddlKeywords = []string{"CREATE", "ALTER", "DROP", "TRUNCATE", "RENAME"}
 
-// isDDLQuery mengecek apakah query termasuk DDL berdasarkan keyword pertama
+// isDDLQuery checks if the query is a DDL statement based on the first keyword
 func isDDLQuery(command string) bool {
 	for _, kw := range ddlKeywords {
 		if command == kw {
@@ -245,7 +247,7 @@ func isDDLQuery(command string) bool {
 	return false
 }
 
-// validateQueryAccess mengkategorikan query dan mengecek izinnya
+// validateQueryAccess categorizes the query and checks access permissions
 func validateQueryAccess(query string) (string, bool) {
 	q := strings.ToUpper(strings.TrimSpace(query))
 	words := strings.Fields(q)
@@ -255,7 +257,7 @@ func validateQueryAccess(query string) (string, bool) {
 
 	command := words[0]
 
-	// DDL dikontrol lewat ACTION_DDL (default: false)
+	// DDL is controlled via ACTION_DDL (default: false)
 	if isDDLQuery(command) {
 		return "DDL", config.AllowDDL
 	}
@@ -274,7 +276,7 @@ func validateQueryAccess(query string) (string, bool) {
 	}
 }
 
-// Helper parsing environment boolean
+// parseBoolEnv parses a boolean environment variable with a default value
 func parseBoolEnv(key string, defaultVal bool) bool {
 	val := os.Getenv(key)
 	if val == "" {
@@ -287,7 +289,7 @@ func parseBoolEnv(key string, defaultVal bool) bool {
 	return b
 }
 
-// Helper mengubah sql.Rows menjadi JSON
+// rowsToJSON converts sql.Rows to a JSON string
 func rowsToJSON(rows *sql.Rows) (string, error) {
 	cols, err := rows.Columns()
 	if err != nil {

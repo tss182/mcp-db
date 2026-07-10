@@ -1,23 +1,23 @@
 # MCP-DB
 
-MCP Server untuk mengeksekusi query database (MySQL & PostgreSQL) melalui protokol Model Context Protocol (MCP). Server ini memungkinkan AI assistant mengakses database dengan kontrol hak akses yang granular.
+An MCP (Model Context Protocol) server that enables AI assistants to execute database queries on MySQL and PostgreSQL with granular access control and an optional knowledge base for schema context.
 
-## Fitur
+## Features
 
-- Mendukung **MySQL** dan **PostgreSQL**
-- Kontrol hak akses granular (READ, CREATE, UPDATE, DELETE)
-- **Knowledge Base** — tambahkan konteks skema, relasi tabel, dan bisnis logic agar AI lebih paham struktur database
-- Komunikasi via STDIO (standar MCP)
-- Output hasil query dalam format JSON
-- Validasi jenis query otomatis berdasarkan konfigurasi
-- DDL selalu ditolak (CREATE TABLE, ALTER, DROP, dll) untuk keamanan
+- Supports **MySQL** and **PostgreSQL**
+- Granular access control (READ, CREATE, UPDATE, DELETE, DDL)
+- **Knowledge Base** — provide schema definitions, table relationships, and business context so the AI understands your database structure
+- Communicates via STDIO (standard MCP transport)
+- Returns query results as JSON
+- Automatic query type validation based on configuration
+- DDL blocked by default for safety (configurable)
 
-## Instalasi
+## Installation
 
-### Prasyarat
+### Prerequisites
 
-- Go 1.21 atau lebih baru
-- MySQL atau PostgreSQL yang sudah berjalan
+- Go 1.21 or later
+- A running MySQL or PostgreSQL instance
 
 ### Install
 
@@ -25,24 +25,24 @@ MCP Server untuk mengeksekusi query database (MySQL & PostgreSQL) melalui protok
 go install github.com/tss182/mcp-db@latest
 ```
 
-Binary akan tersedia di `$GOPATH/bin/mcp-db`.
+The binary will be available at `$GOPATH/bin/mcp-db`.
 
-## Konfigurasi
+## Configuration
 
-Server dikonfigurasi melalui environment variable:
+The server is configured entirely through environment variables:
 
-| Variable | Deskripsi | Wajib |
-|----------|-----------|-------|
-| `DB_DRIVER` | Driver database (`mysql` atau `postgres`) | Ya |
-| `DB_DSN` | Data Source Name / Connection String | Ya |
-| `ACTION_READ` | Izinkan query SELECT/SHOW/DESCRIBE/EXPLAIN (`true`/`false`) | Tidak (default: `false`) |
-| `ACTION_CREATE` | Izinkan query INSERT (`true`/`false`) | Tidak (default: `false`) |
-| `ACTION_UPDATE` | Izinkan query UPDATE (`true`/`false`) | Tidak (default: `false`) |
-| `ACTION_DELETE` | Izinkan query DELETE (`true`/`false`) | Tidak (default: `false`) |
-| `ACTION_DDL` | Izinkan query DDL — CREATE TABLE, ALTER, DROP, TRUNCATE, RENAME (`true`/`false`) | Tidak (default: `false`) |
-| `KB_PATH` | Path ke direktori knowledge base (berisi file `.md`/`.txt`) | Tidak |
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `DB_DRIVER` | Database driver (`mysql` or `postgres`) | Yes |
+| `DB_DSN` | Data Source Name / Connection String | Yes |
+| `ACTION_READ` | Allow SELECT/SHOW/DESCRIBE/EXPLAIN (`true`/`false`) | No (default: `false`) |
+| `ACTION_CREATE` | Allow INSERT (`true`/`false`) | No (default: `false`) |
+| `ACTION_UPDATE` | Allow UPDATE (`true`/`false`) | No (default: `false`) |
+| `ACTION_DELETE` | Allow DELETE (`true`/`false`) | No (default: `false`) |
+| `ACTION_DDL` | Allow DDL — CREATE TABLE, ALTER, DROP, TRUNCATE, RENAME (`true`/`false`) | No (default: `false`) |
+| `KB_PATH` | Path to knowledge base directory (contains `.md`/`.txt` files) | No |
 
-### Format DSN
+### DSN Format
 
 **MySQL:**
 ```
@@ -54,11 +54,11 @@ user:password@tcp(host:port)/dbname
 host=localhost port=5432 user=myuser password=mypass dbname=mydb sslmode=disable
 ```
 
-## Contoh Pemakaian
+## Usage Examples
 
-### Konfigurasi MCP dengan MySQL
+### MySQL Configuration
 
-File `mcp.json`:
+`mcp.json`:
 
 ```json
 {
@@ -78,9 +78,9 @@ File `mcp.json`:
 }
 ```
 
-### Konfigurasi MCP dengan PostgreSQL
+### PostgreSQL Configuration
 
-File `mcp.json`:
+`mcp.json`:
 
 ```json
 {
@@ -100,7 +100,7 @@ File `mcp.json`:
 }
 ```
 
-### Contoh: Read-Only Access (Aman untuk Produksi)
+### Read-Only Access (Safe for Production)
 
 ```json
 {
@@ -120,189 +120,7 @@ File `mcp.json`:
 }
 ```
 
-### Contoh: Full Access (Development)
-
-```json
-{
-  "mcpServers": {
-    "dev-db": {
-      "command": "/path/to/mcp-db",
-      "env": {
-        "DB_DRIVER": "mysql",
-        "DB_DSN": "root:root@tcp(localhost:3306)/dev_db",
-        "ACTION_READ": "true",
-        "ACTION_CREATE": "true",
-        "ACTION_UPDATE": "true",
-        "ACTION_DELETE": "true"
-      }
-    }
-  }
-}
-```
-
-### Contoh: Dengan Knowledge Base
-
-```json
-{
-  "mcpServers": {
-    "my-db": {
-      "command": "/path/to/mcp-db",
-      "env": {
-        "DB_DRIVER": "mysql",
-        "DB_DSN": "root:password@tcp(127.0.0.1:3306)/myapp",
-        "ACTION_READ": "true",
-        "ACTION_CREATE": "true",
-        "ACTION_UPDATE": "true",
-        "ACTION_DELETE": "false",
-        "KB_PATH": "/path/to/knowledge-base"
-      }
-    }
-  }
-}
-```
-
-## Knowledge Base
-
-Knowledge base memungkinkan kamu memberikan konteks tambahan ke AI tentang struktur database, relasi antar tabel, dan bisnis logic. Dengan ini AI akan lebih akurat dalam menulis query karena paham konteks spesifik database kamu.
-
-### Setup
-
-1. Buat direktori untuk menyimpan file knowledge base:
-
-```bash
-mkdir kb
-```
-
-2. Tambahkan file `.md` atau `.txt` yang menjelaskan skema database:
-
-```bash
-kb/
-├── pdr.md
-├── users.md
-└── inventory.md
-```
-
-3. Set environment variable `KB_PATH` ke direktori tersebut.
-
-### Format File Knowledge Base
-
-Tulis penjelasan dalam format bebas (Markdown disarankan). Yang penting adalah menjelaskan:
-- Struktur tabel (kolom, tipe data)
-- Relasi antar tabel (foreign key, join)
-- Konteks bisnis (apa arti data tersebut)
-- Contoh query yang sering dipakai
-
-### Contoh File: `kb/pdr.md`
-
-```markdown
-# PDR (Purchase Delivery Receipt)
-
-## Tabel Utama
-
-### prdr_list
-Tabel utama untuk daftar PDR.
-
-| Kolom | Tipe | Deskripsi |
-|-------|------|-----------|
-| id | INT (PK) | ID unik PDR |
-| form_id | INT (FK) | Relasi ke tabel `form` |
-| pdr_number | VARCHAR | Nomor PDR |
-| supplier_id | INT | ID supplier |
-| status | VARCHAR | Status: draft, approved, received |
-| created_at | DATETIME | Tanggal dibuat |
-
-### form
-Tabel master form/dokumen.
-
-| Kolom | Tipe | Deskripsi |
-|-------|------|-----------|
-| id | INT (PK) | ID unik form |
-| form_name | VARCHAR | Nama form |
-| form_type | VARCHAR | Tipe form |
-| department | VARCHAR | Departemen pemilik |
-
-## Relasi
-
-- `prdr_list.form_id` → `form.id` (Many-to-One)
-- Satu form bisa memiliki banyak PDR
-
-## Contoh Query
-
-​```sql
--- Ambil semua PDR beserta nama form-nya
-SELECT p.pdr_number, p.status, f.form_name, f.department
-FROM prdr_list p
-JOIN form f ON p.form_id = f.id
-WHERE p.status = 'approved';
-​```
-```
-
-### Cara Kerja
-
-Ketika AI menggunakan tool `get_knowledge`, server akan:
-1. Jika tanpa parameter `search` → menampilkan daftar semua file knowledge yang tersedia
-2. Jika dengan parameter `search` → mencari keyword di nama file dan isi konten (case-insensitive)
-
-AI akan otomatis memanfaatkan knowledge base sebelum menulis query, sehingga hasilnya lebih akurat dan sesuai konteks.
-
-## Tool yang Tersedia
-
-### `execute_db_query`
-
-Mengeksekusi query SQL ke database yang terhubung.
-
-**Parameter:**
-
-| Nama | Tipe | Wajib | Deskripsi |
-|------|------|-------|-----------|
-| `query` | string | Ya | Query SQL yang akan dieksekusi |
-
-**Contoh penggunaan oleh AI:**
-
-```sql
-SELECT * FROM users WHERE active = 1
-```
-
-```sql
-INSERT INTO logs (message, created_at) VALUES ('test', NOW())
-```
-
-### `get_knowledge`
-
-Mengambil informasi dari knowledge base untuk memahami struktur database sebelum menulis query.
-
-**Parameter:**
-
-| Nama | Tipe | Wajib | Deskripsi |
-|------|------|-------|-----------|
-| `search` | string | Tidak | Kata kunci pencarian. Jika kosong, menampilkan daftar topik yang tersedia |
-
-**Contoh penggunaan oleh AI:**
-
-- `get_knowledge({})` → Tampilkan semua topik
-- `get_knowledge({"search": "pdr"})` → Cari info tentang PDR
-- `get_knowledge({"search": "users"})` → Cari info tentang tabel users
-
-## Kategorisasi Query
-
-| Kategori | Perintah SQL | Environment Variable |
-|----------|-------------|---------------------|
-| READ | SELECT, SHOW, DESCRIBE, EXPLAIN | `ACTION_READ` |
-| CREATE | INSERT | `ACTION_CREATE` |
-| UPDATE | UPDATE | `ACTION_UPDATE` |
-| DELETE | DELETE | `ACTION_DELETE` |
-| DDL | CREATE TABLE, ALTER, DROP, TRUNCATE, RENAME | `ACTION_DDL` |
-
-## DDL (Data Definition Language)
-
-Query DDL seperti `CREATE TABLE`, `ALTER TABLE`, `DROP TABLE`, `TRUNCATE TABLE`, dan `RENAME TABLE` dikontrol oleh `ACTION_DDL`.
-
-- **Default: `false` (ditolak)** — untuk keamanan, DDL tidak diizinkan kecuali dinyatakan eksplisit.
-- Set `ACTION_DDL=true` jika membutuhkan DDL, misalnya untuk development atau migrasi database.
-
-**Peringatan:** Mengaktifkan DDL berarti AI bisa mengubah struktur database (membuat/menghapus tabel, mengubah kolom, dll). Gunakan dengan hati-hati dan hanya di lingkungan development.
-
-### Contoh: Dengan DDL Aktif (Development/Migrasi)
+### Full Access with DDL (Development)
 
 ```json
 {
@@ -323,14 +141,192 @@ Query DDL seperti `CREATE TABLE`, `ALTER TABLE`, `DROP TABLE`, `TRUNCATE TABLE`,
 }
 ```
 
-## Catatan Penting
+### With Knowledge Base
 
-- **Keamanan:** Selalu gunakan akses minimal yang diperlukan. Untuk production, aktifkan hanya `ACTION_READ`.
-- **DDL Ditolak:** Semua query DDL (CREATE, ALTER, DROP, TRUNCATE, RENAME) selalu ditolak secara hardcode untuk keamanan.
-- **PostgreSQL & LastInsertId:** PostgreSQL tidak mendukung `LastInsertId()`. Gunakan `RETURNING id` dalam query INSERT untuk mendapatkan ID terakhir.
-- **Validasi Query:** Server memvalidasi jenis query berdasarkan kata pertama dari statement SQL. Query yang tidak dikenali akan ditolak.
+```json
+{
+  "mcpServers": {
+    "my-db": {
+      "command": "/path/to/mcp-db",
+      "env": {
+        "DB_DRIVER": "mysql",
+        "DB_DSN": "root:password@tcp(127.0.0.1:3306)/myapp",
+        "ACTION_READ": "true",
+        "ACTION_CREATE": "true",
+        "ACTION_UPDATE": "true",
+        "ACTION_DELETE": "false",
+        "KB_PATH": "/path/to/knowledge-base"
+      }
+    }
+  }
+}
+```
 
-## Lisensi
+## Available Tools
+
+### `execute_db_query`
+
+Executes a SQL query against the connected database.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `query` | string | Yes | The SQL query to execute |
+
+**Examples:**
+
+```sql
+SELECT * FROM users WHERE active = 1
+```
+
+```sql
+INSERT INTO logs (message, created_at) VALUES ('test', NOW())
+```
+
+### `get_knowledge`
+
+Retrieves information from the knowledge base to understand the database structure before writing queries.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `search` | string | No | Search keyword. If empty, lists all available topics |
+
+**Examples:**
+
+- `get_knowledge({})` — List all topics
+- `get_knowledge({"search": "pdr"})` — Search for PDR-related info
+- `get_knowledge({"search": "users"})` — Search for user table info
+
+## Query Categories
+
+| Category | SQL Commands | Environment Variable |
+|----------|-------------|---------------------|
+| READ | SELECT, SHOW, DESCRIBE, EXPLAIN | `ACTION_READ` |
+| CREATE | INSERT | `ACTION_CREATE` |
+| UPDATE | UPDATE | `ACTION_UPDATE` |
+| DELETE | DELETE | `ACTION_DELETE` |
+| DDL | CREATE TABLE, ALTER, DROP, TRUNCATE, RENAME | `ACTION_DDL` |
+
+## DDL (Data Definition Language)
+
+DDL queries such as `CREATE TABLE`, `ALTER TABLE`, `DROP TABLE`, `TRUNCATE TABLE`, and `RENAME TABLE` are controlled by `ACTION_DDL`.
+
+- **Default: `false` (blocked)** — DDL is not allowed unless explicitly enabled.
+- Set `ACTION_DDL=true` if you need DDL, for example during development or database migrations.
+
+**Warning:** Enabling DDL means the AI can modify your database structure (create/drop tables, alter columns, etc). Use with caution and only in development environments.
+
+## Knowledge Base
+
+The knowledge base allows you to provide additional context to the AI about your database schema, table relationships, and business logic. This makes the AI more accurate when writing queries because it understands the specific context of your database.
+
+### Setup
+
+1. Create a directory for your knowledge base files:
+
+```bash
+mkdir kb
+```
+
+2. Add `.md` or `.txt` files describing your database schema:
+
+```
+kb/
+├── pdr.md
+├── users.md
+└── inventory.md
+```
+
+3. Set the `KB_PATH` environment variable to point to this directory.
+
+### Knowledge Base File Format
+
+Write your descriptions in any format (Markdown recommended). The important things to document are:
+
+- Table structure (columns, data types)
+- Table relationships (foreign keys, joins)
+- Business context (what the data means)
+- Common query examples
+
+### Example File: `kb/pdr.md`
+
+```markdown
+# PDR (Purchase Delivery Receipt)
+
+## Tables
+
+### prdr_list
+Main table for PDR records.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INT (PK) | Unique PDR ID |
+| form_id | INT (FK) | References `form` table |
+| pdr_number | VARCHAR | PDR number |
+| supplier_id | INT | Supplier ID |
+| status | VARCHAR | Status: draft, approved, received |
+| created_at | DATETIME | Creation date |
+
+### form
+Master table for forms/documents.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INT (PK) | Unique form ID |
+| form_name | VARCHAR | Form name |
+| form_type | VARCHAR | Form type |
+| department | VARCHAR | Owning department |
+
+## Relationships
+
+- `prdr_list.form_id` → `form.id` (Many-to-One)
+- One form can have many PDRs
+
+## Example Queries
+
+```sql
+-- Get all PDRs with their form names
+SELECT p.pdr_number, p.status, f.form_name, f.department
+FROM prdr_list p
+JOIN form f ON p.form_id = f.id
+WHERE p.status = 'approved';
+```
+```
+
+### How It Works
+
+When the AI uses the `get_knowledge` tool, the server will:
+1. Without a `search` parameter — list all available knowledge base files
+2. With a `search` parameter — search by keyword in file names and content (case-insensitive)
+
+The AI will automatically leverage the knowledge base before writing queries, resulting in more accurate and context-aware output.
+
+## Important Notes
+
+- **Security:** Always use the minimum required access. For production, enable only `ACTION_READ`.
+- **DDL:** Blocked by default. Only enable in development environments.
+- **PostgreSQL & LastInsertId:** PostgreSQL does not support `LastInsertId()`. Use `RETURNING id` in your INSERT queries to get the last inserted ID.
+- **Query validation:** The server validates query types based on the first keyword of the SQL statement. Unrecognized queries are rejected.
+
+## Changelog
+
+### v0.1.1
+- Added knowledge base support (`KB_PATH`, `get_knowledge` tool)
+- Added configurable DDL access control (`ACTION_DDL`)
+- All messages and documentation in English
+- Version constant added to server
+
+### v0.1.0
+- Initial release
+- MySQL and PostgreSQL support
+- Granular access control (READ, CREATE, UPDATE, DELETE)
+- JSON output for query results
+- STDIO transport
+
+## License
 
 MIT License
 
